@@ -20,6 +20,27 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+async function createProject(userId, conversationId, title, description, url) {
+    const { data, error } = await supabase
+        .from("Projects")
+        .insert([
+            {
+                user_id: userId,
+                conversation_id: conversationId,
+                title: title,
+                description: description,
+                attachments_link: url,
+            },
+        ])
+        .select();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
+}
+
 // Middleware
 app.use(cors());
 app.use(json()); // for parsing application/json
@@ -203,11 +224,92 @@ app.post("/chat/:conversationId", authenticateUser, async (req, res) => {
             res.status(200).json(messageResponse[0]);
         } else {
             // Assistant
-
             const response = await openai.chat.completions.create({
                 model: "gpt-3.5-turbo-0125",
                 messages: chatHistory,
+                tools: [
+                    {
+                        type: "function",
+                        function: {
+                            name: "createProject",
+                            description:
+                                "Creates a new freelancing project in the database.",
+                            parameters: {
+                                type: "object",
+                                properties: {
+                                    title: {
+                                        type: "string",
+                                        description:
+                                            "A short and concise title for the freelancing project.",
+                                    },
+                                    description: {
+                                        type: "string",
+                                        description:
+                                            "A clear and informative description of the freelancing project.",
+                                    },
+                                    url: {
+                                        type: "string",
+                                        description:
+                                            "A url that points to the attachments for the project.",
+                                    },
+                                },
+                                required: ["title", "description", "url"],
+                            },
+                        },
+                    },
+                ],
             });
+
+            console.log("Response:", response);
+
+            if (response.choices[0].finish_reason === "tool_calls") {
+                console.log("Assistant is trying to create a project...");
+
+                const parsedResponse = JSON.parse(
+                    response.choices[0].message.tool_calls[0].function.arguments
+                );
+
+                console.log("Parsed Response:", parsedResponse);
+                const title = parsedResponse.title;
+
+                const description = parsedResponse.description;
+
+                const url = parsedResponse.url;
+
+                const project = await createProject(
+                    req.user.id,
+                    conversationId,
+                    title,
+                    description,
+                    url
+                );
+
+                console.log("Project Created:", project);
+
+                const { data: message, error: messageError } = await supabase
+                    .from("Messages")
+                    .insert([
+                        {
+                            conversation_id: conversationId,
+                            from: from,
+                            message:
+                                "You're all set! I have created a new project for you. You can view it in the Projects section.",
+                        },
+                    ])
+                    .select();
+
+                if (messageError) {
+                    throw messageError;
+                }
+
+                const messageResponse = message;
+
+                console.log("Message Response:", messageResponse[0]);
+
+                res.status(200).json(messageResponse[0]);
+
+                return;
+            }
 
             const { data: message, error: messageError } = await supabase
                 .from("Messages")
@@ -233,6 +335,49 @@ app.post("/chat/:conversationId", authenticateUser, async (req, res) => {
     } catch (error) {
         console.error("Error sending message:", error);
         res.status(500).json({ error: "Failed to send message" });
+    }
+});
+
+// FETCH PROJECTS
+app.get("/projects", authenticateUser, async (req, res) => {
+    try {
+        console.log("User ID:", req.user.id);
+
+        const { data: projects, error } = await supabase
+            .from("Projects")
+            .select("*")
+            .eq("user_id", req.user.id);
+
+        console.log("Projects:", projects);
+
+        if (error) {
+            throw error;
+        }
+
+        res.json(projects);
+    } catch (error) {
+        console.error("Error fetching projects:", error);
+        res.status(500).json({ error: "Failed to fetch projects" });
+    }
+});
+
+app.get("/projects/:projectId", authenticateUser, async (req, res) => {
+    const projectId = req.params.projectId;
+
+    try {
+        const { data: project, error } = await supabase
+            .from("Projects")
+            .select("*")
+            .eq("project_id", projectId);
+
+        if (error) {
+            throw error;
+        }
+
+        res.json(project[0]);
+    } catch (error) {
+        console.error("Error fetching project:", error);
+        res.status(500).json({ error: "Failed to fetch project" });
     }
 });
 
