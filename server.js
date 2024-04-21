@@ -71,7 +71,7 @@ const authenticateUser = async (req, res, next) => {
 };
 
 app.get("/", (req, res) => {
-    res.send("Hello World! This is the ChatGPT Clone Backend.");
+    res.send("Autolance.ai is running successfully... 🚀");
 });
 
 // AUTH ROUTES
