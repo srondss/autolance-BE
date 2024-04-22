@@ -100,20 +100,33 @@ app.post("/auth/signup", async (req, res) => {
 });
 
 app.post("/auth/login", async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, provider } = req.body;
 
-    if (!email || !password) {
+    // check if email and password are provided unless provider is provided
+    if ((!email || !password) && !provider) {
         return res.status(400).json({ error: "Invalid request" });
     }
 
     try {
+        if (provider) {
+            let { data, error } = await supabase.auth.signInWithOAuth({
+                provider: provider,
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            res.send({ accessToken: data.session.access_token });
+            return;
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
             password: password,
         });
 
         if (error) {
-            console.log("Throwing Error...");
             throw error;
         }
 
