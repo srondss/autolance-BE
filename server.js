@@ -238,7 +238,7 @@ app.post("/chat/:conversationId", authenticateUser, async (req, res) => {
         } else {
             // Assistant
             const response = await openai.chat.completions.create({
-                model: "gpt-3.5-turbo-0125",
+                model: "gpt-4-turbo-2024-04-09",
                 messages: chatHistory,
                 tools: [
                     {
